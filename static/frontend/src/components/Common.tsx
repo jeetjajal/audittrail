@@ -3,27 +3,29 @@ import { IncidentSeverity, IncidentStatus, CapaStatus } from '../types';
 
 export const StatusBadge: React.FC<{
   type?: 'severity' | 'status' | 'capa' | 'review';
-  value: string;
-}> = ({ type = 'status', value }) => {
+  value?: string;
+  status?: string;
+}> = ({ type = 'status', value, status }) => {
+  const badgeValue = (value || status || 'UNKNOWN').toString();
   let bg = '#DFE1E6';
   let color = '#172B4D';
 
-  if (value === 'CRITICAL' || value === 'REJECTED' || value === 'DISMISSED' || value === 'CANCELLED') {
+  if (badgeValue === 'CRITICAL' || badgeValue === 'REJECTED' || badgeValue === 'DISMISSED' || badgeValue === 'CANCELLED') {
     bg = '#FFEBE6';
     color = '#DE350B';
-  } else if (value === 'MAJOR' || value === 'CONTAINMENT_ACTIVE' || value === 'HIGH') {
+  } else if (badgeValue === 'MAJOR' || badgeValue === 'CONTAINMENT_ACTIVE' || badgeValue === 'HIGH') {
     bg = '#FFF0B3';
     color = '#172B4D';
-  } else if (value === 'MINOR' || value === 'MEDIUM') {
+  } else if (badgeValue === 'MINOR' || badgeValue === 'MEDIUM') {
     bg = '#EAE6FF';
     color = '#403294';
-  } else if (value === 'NEGLIGIBLE' || value === 'LOW') {
+  } else if (badgeValue === 'NEGLIGIBLE' || badgeValue === 'LOW') {
     bg = '#F4F5F7';
     color = '#6B778C';
-  } else if (value === 'CLOSED' || value === 'VERIFIED' || value === 'APPROVED' || value === 'COMPLETED' || value === 'ACCEPTED') {
+  } else if (badgeValue === 'CLOSED' || badgeValue === 'VERIFIED' || badgeValue === 'APPROVED' || badgeValue === 'COMPLETED' || badgeValue === 'ACCEPTED' || badgeValue === 'ACTIVE') {
     bg = '#E3FCEF';
     color = '#006644';
-  } else if (value === 'INVESTIGATING' || value === 'IN_PROGRESS' || value === 'OPEN' || value === 'ACTION_PLANNING') {
+  } else if (badgeValue === 'INVESTIGATING' || badgeValue === 'IN_PROGRESS' || badgeValue === 'OPEN' || badgeValue === 'ACTION_PLANNING') {
     bg = '#DEEBFF';
     color = '#0747A6';
   }
@@ -44,7 +46,7 @@ export const StatusBadge: React.FC<{
         border: `1px solid ${bg === '#F4F5F7' ? '#DFE1E6' : 'transparent'}`,
       }}
     >
-      {value.replace(/_/g, ' ')}
+      {badgeValue.replace(/_/g, ' ')}
     </span>
   );
 };
@@ -54,9 +56,11 @@ export const MetricCard: React.FC<{
   value: string | number;
   subtitle?: string;
   badge?: string;
+  badgeText?: string;
   badgeColor?: string;
   icon?: string;
-}> = ({ title, value, subtitle, badge, badgeColor, icon }) => {
+}> = ({ title, value, subtitle, badge, badgeText, badgeColor, icon }) => {
+  const displayBadge = badge || badgeText;
   return (
     <div
       style={{
@@ -78,18 +82,18 @@ export const MetricCard: React.FC<{
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
         <span style={{ fontSize: '28px', fontWeight: 700, color: '#172B4D' }}>{value}</span>
-        {badge && (
+        {displayBadge && (
           <span
             style={{
               fontSize: '11px',
               fontWeight: 600,
               padding: '2px 6px',
               borderRadius: '3px',
-              backgroundColor: badgeColor || '#DEEBFF',
-              color: '#0747A6',
+              backgroundColor: badgeColor === 'critical' ? '#FFEBE6' : badgeColor === 'warning' ? '#FFF0B3' : badgeColor === 'primary' ? '#DEEBFF' : badgeColor || '#E3FCEF',
+              color: badgeColor === 'critical' ? '#DE350B' : badgeColor === 'warning' ? '#172B4D' : badgeColor === 'primary' ? '#0747A6' : '#006644',
             }}
           >
-            {badge}
+            {displayBadge}
           </span>
         )}
       </div>

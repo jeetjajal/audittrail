@@ -9,50 +9,42 @@ interface ApprovalCenterProps {
 }
 
 export const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ onNavigate }) => {
-  const [pendingSteps, setPendingSteps] = useState<ApprovalStep[]>([
-    {
-      step_id: 'step-001',
-      step_order: 1,
-      step_name: 'Lead Quality Engineer CAPA Sign-Off',
-      step_status: 'PENDING',
-      workflow_id: 'wf-001',
-      entity_type: 'CAPA',
-      entity_id: 'c1000000-0000-0000-0000-000000000001',
-      workflow_type: 'CAPA_CLOSURE',
-      workflow_created_at: new Date().toISOString(),
-      required_role_name: 'Quality Assurance Lead',
-    },
-    {
-      step_id: 'step-002',
-      step_order: 1,
-      step_name: 'Regulatory Affairs Incident Release Determination',
-      step_status: 'PENDING',
-      workflow_id: 'wf-002',
-      entity_type: 'INCIDENT',
-      entity_id: 'c1000000-0000-0000-0000-000000000001',
-      workflow_type: 'NC_DISPOSITION',
-      workflow_created_at: new Date(Date.now() - 86400000).toISOString(),
-      required_role_name: 'Regulatory Affairs Manager',
-    },
-  ]);
+  const [pendingSteps, setPendingSteps] = useState<ApprovalStep[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Signing modal
   const [activeStep, setActiveStep] = useState<ApprovalStep | null>(null);
   const [isSignModalOpen, setIsSignModalOpen] = useState(false);
   const [meaning, setMeaning] = useState<'AUTHORED' | 'REVIEWED' | 'APPROVED' | 'VERIFIED'>('APPROVED');
   const [reauthPassword, setReauthPassword] = useState('');
   const [agreedToLegal, setAgreedToLegal] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [signing, setSigning] = useState(false);
+
+  // Rejection modal
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+
+  // Details modal
+  const [workflowDetails, setWorkflowDetails] = useState<any | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+
+  async function loadPending() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await ApiClient.getPendingApprovals();
+      setPendingSteps(res.items || []);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadPending() {
-      try {
-        const res = await ApiClient.getPendingApprovals();
-        if (res && Array.isArray(res.items) && res.items.length > 0) {
-          setPendingSteps(res.items);
-        }
-      } catch (err) {
-        console.warn('Using baseline approval demonstration items', err);
-      }
-    }
     loadPending();
   }, []);
 
@@ -67,17 +59,54 @@ export const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ onNavigate }) =>
       return;
     }
 
+    setSigning(true);
     try {
       if (activeStep) {
-        await ApiClient.approveStep(activeStep.step_id, meaning);
+        await ApiClient.approveStep(activeStep.step_id, meaning, notes);
         setPendingSteps(pendingSteps.filter((s) => s.step_id !== activeStep.step_id));
         setIsSignModalOpen(false);
         setReauthPassword('');
         setAgreedToLegal(false);
+        setNotes('');
         alert('Electronic signature successfully executed and cryptographically sealed.');
       }
     } catch (err) {
       alert(`Signature execution failed: ${(err as Error).message}`);
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  async function handleExecuteReject(e: React.FormEvent) {
+    e.preventDefault();
+    if (!rejectionReason.trim()) {
+      alert('A documented rejection reason is required for regulatory compliance.');
+      return;
+    }
+
+    setRejecting(true);
+    try {
+      if (activeStep) {
+        await ApiClient.rejectStep(activeStep.step_id, rejectionReason);
+        setPendingSteps(pendingSteps.filter((s) => s.step_id !== activeStep.step_id));
+        setIsRejectModalOpen(false);
+        setRejectionReason('');
+        alert('Workflow step rejected and logged in the audit trail.');
+      }
+    } catch (err) {
+      alert(`Rejection failed: ${(err as Error).message}`);
+    } finally {
+      setRejecting(false);
+    }
+  }
+
+  async function handleViewWorkflow(step: ApprovalStep) {
+    try {
+      const wf = await ApiClient.getApprovalWorkflow(step.workflow_id);
+      setWorkflowDetails(wf);
+      setIsDetailsModalOpen(true);
+    } catch (err) {
+      alert(`Could not fetch workflow details: ${(err as Error).message}`);
     }
   }
 
@@ -100,148 +129,337 @@ export const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ onNavigate }) =>
         cryptographically bound to the record digest and cannot be modified or excised.
       </div>
 
-      {/* Pending Approval List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {pendingSteps.length === 0 ? (
-          <div style={{ backgroundColor: '#FFFFFF', padding: '32px', borderRadius: '6px', border: '1px solid #DFE1E6', textAlign: 'center', color: '#6B778C' }}>
-            ✓ No pending approval workflows requiring your electronic signature.
-          </div>
-        ) : (
-          pendingSteps.map((step) => (
-            <div
-              key={step.step_id}
-              style={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: '6px',
-                border: '1px solid #DFE1E6',
-                padding: '20px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                boxShadow: '0 1px 3px rgba(9, 30, 66, 0.08)',
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#FFE380', color: '#172B4D', padding: '2px 8px', borderRadius: '3px' }}>
-                    {step.workflow_type}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#6B778C' }}>
-                    Entity: <strong>{step.entity_type}</strong> (Step {step.step_order})
-                  </span>
-                </div>
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 600, color: '#172B4D' }}>
-                  {step.step_name}
-                </h3>
-                <div style={{ fontSize: '12px', color: '#505F79' }}>
-                  Required Qualification: <strong>{step.required_role_name}</strong> • Initiated: {new Date(step.workflow_created_at).toLocaleDateString()}
-                </div>
-              </div>
+      {loading && (
+        <div style={{ padding: '30px', textAlign: 'center', color: '#6B778C', fontSize: '13px' }}>
+          Loading pending approval workflows from database...
+        </div>
+      )}
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => {
-                    setActiveStep(step);
-                    setIsSignModalOpen(true);
-                  }}
-                  style={{
-                    backgroundColor: '#0052CC',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    padding: '8px 16px',
-                    borderRadius: '4px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <span>✍️</span> Sign & Approve
-                </button>
+      {error && (
+        <div
+          style={{
+            backgroundColor: '#FFEBE6',
+            color: '#DE350B',
+            padding: '12px 16px',
+            borderRadius: '4px',
+            marginBottom: '20px',
+            fontSize: '13px',
+          }}
+        >
+          Failed to load approvals: {error}
+        </div>
+      )}
+
+      {/* Pending Approvals Table */}
+      {!loading && (
+        <div style={{ backgroundColor: '#FFFFFF', borderRadius: '6px', border: '1px solid #DFE1E6', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #DFE1E6', fontWeight: 700, fontSize: '15px', color: '#172B4D', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Pending Authorizations & Sign-offs ({pendingSteps.length})</span>
+            <button
+              onClick={loadPending}
+              style={{ background: 'none', border: '1px solid #DFE1E6', borderRadius: '3px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+            >
+              ↻ Refresh
+            </button>
+          </div>
+
+          {pendingSteps.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#6B778C' }}>
+              <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '6px', color: '#172B4D' }}>
+                All Approvals Completed
+              </div>
+              <div style={{ fontSize: '13px' }}>
+                There are no pending electronic signatures awaiting your authorization in this tenant.
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#F4F5F7', borderBottom: '1px solid #DFE1E6', textAlign: 'left' }}>
+                  <th style={{ padding: '10px 14px', color: '#6B778C', fontWeight: 600 }}>Entity & Workflow</th>
+                  <th style={{ padding: '10px 14px', color: '#6B778C', fontWeight: 600 }}>Step Description</th>
+                  <th style={{ padding: '10px 14px', color: '#6B778C', fontWeight: 600 }}>Required Role</th>
+                  <th style={{ padding: '10px 14px', color: '#6B778C', fontWeight: 600 }}>Submitted</th>
+                  <th style={{ padding: '10px 14px', color: '#6B778C', fontWeight: 600 }}>Status</th>
+                  <th style={{ padding: '10px 14px', color: '#6B778C', fontWeight: 600, textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingSteps.map((step) => (
+                  <tr key={step.step_id} style={{ borderBottom: '1px solid #EBECF0' }}>
+                    <td style={{ padding: '12px 14px' }}>
+                      <strong style={{ color: '#0052CC', display: 'block' }}>{step.workflow_type}</strong>
+                      <span style={{ fontSize: '11px', color: '#6B778C' }}>
+                        {step.entity_type} · ID: {step.entity_id ? step.entity_id.substring(0, 8) : 'N/A'}...
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 14px', fontWeight: 500, color: '#172B4D' }}>
+                      {step.step_name} (Step {step.step_order})
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{ backgroundColor: '#EAE6FF', color: '#403294', padding: '2px 8px', borderRadius: '3px', fontSize: '11px', fontWeight: 600 }}>
+                        {step.required_role_name}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#6B778C' }}>
+                      {new Date(step.workflow_created_at).toLocaleDateString()}
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <StatusBadge status={step.step_status} />
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => handleViewWorkflow(step)}
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            border: '1px solid #DFE1E6',
+                            color: '#172B4D',
+                            padding: '6px 10px',
+                            borderRadius: '3px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Inspect
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveStep(step);
+                            setIsRejectModalOpen(true);
+                          }}
+                          style={{
+                            backgroundColor: '#FFEBE6',
+                            border: '1px solid #FFBDAD',
+                            color: '#DE350B',
+                            padding: '6px 10px',
+                            borderRadius: '3px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveStep(step);
+                            setIsSignModalOpen(true);
+                          }}
+                          style={{
+                            backgroundColor: '#0052CC',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            padding: '6px 14px',
+                            borderRadius: '3px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Sign / Approve
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
-      {/* Modal: 21 CFR Part 11 Electronic Signature Execution */}
-      <Modal isOpen={isSignModalOpen} title="Execute 21 CFR Part 11 Electronic Signature" onClose={() => setIsSignModalOpen(false)} width="550px">
-        <form onSubmit={handleExecuteSignature} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ backgroundColor: '#FAFBFC', padding: '12px', borderRadius: '4px', border: '1px solid #EBECF0', fontSize: '12px' }}>
-            <div>Signer: <strong>Dr. Eleanor Mitchell</strong></div>
-            <div>Title: <strong>Director of Quality Assurance</strong></div>
-            <div>Document/Step: <strong>{activeStep?.step_name}</strong></div>
-          </div>
+      {/* 21 CFR Part 11 Electronic Signature Modal */}
+      <Modal isOpen={isSignModalOpen} onClose={() => setIsSignModalOpen(false)} title="Execute 21 CFR Part 11 Electronic Signature">
+        <form onSubmit={handleExecuteSignature}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <span style={{ fontSize: '12px', color: '#6B778C', display: 'block', marginBottom: '4px' }}>Target Authorization:</span>
+              <strong style={{ fontSize: '14px', color: '#172B4D' }}>{activeStep?.step_name}</strong>
+            </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#172B4D', marginBottom: '4px' }}>
-              Meaning of Signature (21 CFR § 11.50) *
-            </label>
-            <select
-              value={meaning}
-              onChange={(e) => setMeaning(e.target.value as any)}
-              style={{ width: '100%', padding: '8px', border: '1px solid #DFE1E6', borderRadius: '4px', fontSize: '13px' }}
-            >
-              <option value="APPROVED">APPROVED (Formal Quality Authorization)</option>
-              <option value="REVIEWED">REVIEWED (Technical Concurrence)</option>
-              <option value="VERIFIED">VERIFIED (Objective Evidence Audit)</option>
-              <option value="AUTHORED">AUTHORED (Primary Authorship)</option>
-            </select>
-          </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#172B4D', marginBottom: '4px' }}>
+                Unambiguous Meaning of Signature (21 CFR § 11.50):
+              </label>
+              <select
+                value={meaning}
+                onChange={(e) => setMeaning(e.target.value as any)}
+                style={{ width: '100%', padding: '8px', border: '1px solid #DFE1E6', borderRadius: '4px' }}
+              >
+                <option value="APPROVED">I approve this record and authorize its execution (APPROVED)</option>
+                <option value="REVIEWED">I have technically reviewed and verified this record (REVIEWED)</option>
+                <option value="VERIFIED">I have independently inspected and verified objective evidence (VERIFIED)</option>
+                <option value="AUTHORED">I am the designated author of this regulatory record (AUTHORED)</option>
+              </select>
+            </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#172B4D', marginBottom: '4px' }}>
-              Step-Up Re-Authentication Password / Token (21 CFR § 11.200) *
-            </label>
-            <input
-              type="password"
-              required
-              value={reauthPassword}
-              onChange={(e) => setReauthPassword(e.target.value)}
-              placeholder="Enter re-authentication password or MFA passkey..."
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #DFE1E6', borderRadius: '4px', fontSize: '13px' }}
-            />
-          </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#172B4D', marginBottom: '4px' }}>
+                Signer Comments / Authorization Notes:
+              </label>
+              <textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional qualification or inspection notes..."
+                style={{ width: '100%', padding: '8px', border: '1px solid #DFE1E6', borderRadius: '4px', fontSize: '12px' }}
+              />
+            </div>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-            <input
-              type="checkbox"
-              id="legalEquiv"
-              checked={agreedToLegal}
-              onChange={(e) => setAgreedToLegal(e.target.checked)}
-              style={{ marginTop: '2px' }}
-            />
-            <label htmlFor="legalEquiv" style={{ fontSize: '12px', color: '#172B4D', lineHeight: '1.4' }}>
-              I understand and certify that my electronic signature is the legally binding equivalent of my handwritten signature pursuant to FDA 21 CFR Part 11.
-            </label>
-          </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#172B4D', marginBottom: '4px' }}>
+                Step-Up Re-Authentication Password (21 CFR § 11.200):
+              </label>
+              <input
+                type="password"
+                required
+                placeholder="Enter your security credential..."
+                value={reauthPassword}
+                onChange={(e) => setReauthPassword(e.target.value)}
+                style={{ width: '100%', padding: '8px', border: '1px solid #DFE1E6', borderRadius: '4px' }}
+              />
+            </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-            <button
-              type="button"
-              onClick={() => setIsSignModalOpen(false)}
-              style={{ padding: '8px 16px', border: '1px solid #DFE1E6', backgroundColor: '#FFF', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              style={{
-                backgroundColor: '#00875A',
-                color: '#FFF',
-                border: 'none',
-                padding: '8px 20px',
-                borderRadius: '4px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Digitally Seal & Sign
-            </button>
+            <div style={{ backgroundColor: '#FAFBFC', border: '1px solid #EBECF0', padding: '10px 12px', borderRadius: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: '#172B4D', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={agreedToLegal}
+                  onChange={(e) => setAgreedToLegal(e.target.checked)}
+                  style={{ marginTop: '2px' }}
+                />
+                <span>
+                  I acknowledge that my electronic signature constitutes the legally binding equivalent of my traditional handwritten signature per FDA 21 CFR Part 11.
+                </span>
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setIsSignModalOpen(false)}
+                style={{ padding: '8px 16px', border: '1px solid #DFE1E6', borderRadius: '4px', backgroundColor: '#FFFFFF', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={signing}
+                style={{ padding: '8px 16px', border: 'none', borderRadius: '4px', backgroundColor: '#0052CC', color: '#FFFFFF', fontWeight: 600, cursor: 'pointer' }}
+              >
+                {signing ? 'Signing...' : 'Affix Electronic Signature'}
+              </button>
+            </div>
           </div>
         </form>
+      </Modal>
+
+      {/* Rejection Modal */}
+      <Modal isOpen={isRejectModalOpen} onClose={() => setIsRejectModalOpen(false)} title="Reject Approval Step">
+        <form onSubmit={handleExecuteReject}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <span style={{ fontSize: '12px', color: '#6B778C', display: 'block', marginBottom: '4px' }}>Target Authorization:</span>
+              <strong style={{ fontSize: '14px', color: '#172B4D' }}>{activeStep?.step_name}</strong>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#172B4D', marginBottom: '4px' }}>
+                Documented Rejection Justification (Mandatory):
+              </label>
+              <textarea
+                required
+                rows={3}
+                placeholder="State specific deficiency, missing validation data, or regulatory reason for rejection..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                style={{ width: '100%', padding: '8px', border: '1px solid #DFE1E6', borderRadius: '4px', fontSize: '12px' }}
+              />
+            </div>
+
+            <div style={{ backgroundColor: '#FFEBE6', color: '#DE350B', padding: '10px 12px', borderRadius: '4px', fontSize: '12px' }}>
+              ⚠️ Rejecting this step will immediately transition the parent workflow into <strong>REJECTED</strong> status and record a permanent audit entry.
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setIsRejectModalOpen(false)}
+                style={{ padding: '8px 16px', border: '1px solid #DFE1E6', borderRadius: '4px', backgroundColor: '#FFFFFF', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={rejecting}
+                style={{ padding: '8px 16px', border: 'none', borderRadius: '4px', backgroundColor: '#DE350B', color: '#FFFFFF', fontWeight: 600, cursor: 'pointer' }}
+              >
+                {rejecting ? 'Rejecting...' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Workflow Inspection Details Modal */}
+      <Modal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} title="Workflow Progression & Step History">
+        {workflowDetails && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', backgroundColor: '#F4F5F7', padding: '12px', borderRadius: '4px' }}>
+              <div>
+                <span style={{ color: '#6B778C', display: 'block', fontSize: '11px' }}>WORKFLOW ID</span>
+                <code>{workflowDetails.id}</code>
+              </div>
+              <div>
+                <span style={{ color: '#6B778C', display: 'block', fontSize: '11px' }}>TYPE & ENTITY</span>
+                <strong>{workflowDetails.workflow_type} ({workflowDetails.entity_type})</strong>
+              </div>
+              <div>
+                <span style={{ color: '#6B778C', display: 'block', fontSize: '11px' }}>CURRENT STATUS</span>
+                <StatusBadge status={workflowDetails.status} />
+              </div>
+              <div>
+                <span style={{ color: '#6B778C', display: 'block', fontSize: '11px' }}>CREATED AT</span>
+                <span>{new Date(workflowDetails.created_at).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <h4 style={{ margin: '10px 0 6px 0', fontSize: '14px', color: '#172B4D' }}>Sequential Approval Stages:</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {workflowDetails.steps && workflowDetails.steps.map((st: any) => (
+                <div key={st.id} style={{ border: '1px solid #DFE1E6', borderRadius: '4px', padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ color: '#172B4D' }}>Stage {st.step_order}: {st.step_name}</strong>
+                    <StatusBadge status={st.status} />
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#6B778C', marginTop: '4px' }}>
+                    Required Role: <strong>{st.required_role_name}</strong>
+                  </div>
+                  {st.signature_id && (
+                    <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#E3FCEF', borderRadius: '3px', fontSize: '11px', color: '#006644' }}>
+                      ✓ Signed by <strong>{st.signer_name_snapshot}</strong> ({st.meaning_of_signature}) on {new Date(st.signed_at).toLocaleString()}
+                      <div style={{ marginTop: '2px', wordBreak: 'break-all' }}>
+                        Manifest: <code>{st.signature_manifest_hash}</code>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setIsDetailsModalOpen(false)}
+                style={{ padding: '8px 16px', border: '1px solid #DFE1E6', borderRadius: '4px', backgroundColor: '#FFFFFF', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

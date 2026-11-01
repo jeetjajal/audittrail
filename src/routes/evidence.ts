@@ -2,6 +2,15 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import crypto from 'crypto';
 import { withTenantTransaction } from '../middleware/tenant-context';
 import { AuditService } from '../services/audit-service';
+import { S3Service } from '../services/s3-service';
+
+interface PresignUploadBody {
+  fileName: string;
+  mimeType: string;
+  sha256Checksum: string;
+  fileSizeBytes?: number;
+  retentionYears?: number;
+}
 
 interface CreateDocumentBody {
   documentCode?: string;
@@ -243,5 +252,95 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
     });
 
     reply.status(201).send(result);
+  });
+
+  // POST /api/v1/documents/presign-upload - Generate AWS S3 Presigned Upload URL with WORM Object Lock & SHA-256
+  fastify.post('/documents/presign-upload', async (req: FastifyRequest<{ Body: PresignUploadBody }>, reply: FastifyReply) => {
+    const orgId = req.tenantOrganizationId!;
+    const body = req.body;
+
+    if (!body.fileName || !body.mimeType || !body.sha256Checksum) {
+      return reply.status(400).send({
+        error: 'INVALID_INPUT',
+        message: 'fileName, mimeType, and sha256Checksum are mandatory for regulatory document presigning',
+      });
+    }
+
+    if (body.sha256Checksum.length !== 64) {
+      return reply.status(400).send({
+        error: 'INVALID_CHECKSUM',
+        message: 'sha256Checksum must be a valid 64-character hexadecimal SHA-256 string',
+      });
+    }
+
+    const presigned = await S3Service.generatePresignedUploadUrl({
+      organizationId: orgId,
+      fileName: body.fileName,
+      mimeType: body.mimeType,
+      sha256Checksum: body.sha256Checksum,
+      retentionYears: body.retentionYears,
+    });
+
+    return reply.status(200).send(presigned);
+  });
+
+  // GET /api/v1/documents/:id/download-url - Generate time-limited AWS S3 Presigned Download URL
+  fastify.get('/documents/:id/download-url', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const orgId = req.tenantOrganizationId!;
+    const docId = req.params.id;
+
+    const result = await withTenantTransaction(orgId, async (client) => {
+      const queryRes = await client.query(
+        `SELECT d.id, d.document_code, d.title, d.is_locked,
+                v.file_name, v.storage_s3_uri, v.sha256_checksum, v.mime_type, v.file_size_bytes
+         FROM documents d
+         JOIN document_versions v ON d.organization_id = v.organization_id AND d.current_version_id = v.id
+         WHERE d.organization_id = $1 AND d.id = $2;`,
+        [orgId, docId]
+      );
+
+      if (queryRes.rows.length === 0) {
+        throw new Error('DOCUMENT_NOT_FOUND');
+      }
+
+      const doc = queryRes.rows[0];
+      const s3Uri = doc.storage_s3_uri;
+      // Extract key from s3://bucket-name/key
+      const s3Key = s3Uri.replace(/^s3:\/\/[^/]+\//, '');
+
+      const presigned = await S3Service.generatePresignedDownloadUrl(s3Key, doc.file_name);
+
+      return {
+        documentId: doc.id,
+        documentCode: doc.document_code,
+        title: doc.title,
+        fileName: doc.file_name,
+        mimeType: doc.mime_type,
+        fileSizeBytes: doc.file_size_bytes,
+        sha256Checksum: doc.sha256_checksum,
+        isLocked: doc.is_locked,
+        ...presigned,
+      };
+    });
+
+    return reply.status(200).send(result);
+  });
+
+  // Local S3 Upload Simulation for offline / non-cloud dev environments
+  fastify.put('/documents/mock-upload/*', async (req: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({
+      status: 'UPLOADED_MOCK_S3',
+      message: 'Simulated S3 Object Lock upload completed successfully in local development mode.',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Local S3 Download Simulation for offline / non-cloud dev environments
+  fastify.get('/documents/mock-download/*', async (req: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({
+      status: 'DOWNLOAD_MOCK_S3',
+      message: 'Simulated S3 Object Lock download stream in local development mode.',
+      sha256Verification: 'VERIFIED',
+    });
   });
 }

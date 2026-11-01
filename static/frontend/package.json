@@ -4,7 +4,7 @@
   "private": true,
   "description": "AuditTrail AI - Medical Device eQMS React Custom UI for Atlassian Forge",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc && esbuild src/index.tsx --bundle --outfile=build/bundle.js --minify --sourcemap --platform=browser --target=es2020"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -13,6 +13,7 @@
   "devDependencies": {
     "@types/react": "^18.2.67",
     "@types/react-dom": "^18.2.22",
+    "esbuild": "^0.28.2",
     "typescript": "^5.4.3"
   }
 }

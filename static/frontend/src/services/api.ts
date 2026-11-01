@@ -225,4 +225,100 @@ export class ApiClient {
       failureReason?: string;
     }>(`/audit/verify?fromSeq=${fromSeq}&toSeq=${toSeq}`);
   }
+
+  // Analytics & Reporting
+  public static async getAnalyticsOverview(params?: { startDate?: string; endDate?: string }) {
+    const query = new URLSearchParams(params as Record<string, string>).toString();
+    return this.request<any>(`/analytics/overview${query ? '?' + query : ''}`);
+  }
+
+  public static async getAnalyticsReports() {
+    return this.request<{ items: any[]; total: number }>('/analytics/reports');
+  }
+
+  public static async generateReport(data: {
+    reportType: string;
+    title: string;
+    parameters?: Record<string, unknown>;
+  }) {
+    return this.request<any>('/analytics/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Organization & Settings
+  public static async getOrganization() {
+    return this.request<any>('/organization');
+  }
+
+  public static async updateOrganization(data: {
+    name?: string;
+    fdaEstablishmentId?: string;
+    isoCertifications?: any[];
+  }) {
+    return this.request<any>('/organization', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public static async getRetentionPolicy() {
+    return this.request<any>('/organization/retention');
+  }
+
+  // Users & Roles
+  public static async getUsers() {
+    return this.request<{ items: any[]; total: number }>('/users');
+  }
+
+  public static async getUser(id: string) {
+    return this.request<any>(`/users/${id}`);
+  }
+
+  public static async updateUserStatus(id: string, isActive: boolean, reasonForChange: string) {
+    return this.request<any>(`/users/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive, reasonForChange }),
+    });
+  }
+
+  public static async getRoles() {
+    return this.request<{ items: any[]; total: number }>('/users/roles');
+  }
+
+  public static async getApprovalWorkflow(id: string) {
+    return this.request<any>(`/approvals/${id}`);
+  }
+
+  // AWS S3 Evidence Presigning
+  public static async presignEvidenceUpload(data: {
+    fileName: string;
+    mimeType: string;
+    sha256Checksum: string;
+    retentionYears?: number;
+  }) {
+    return this.request<{
+      uploadUrl: string;
+      s3Uri: string;
+      s3Key: string;
+      expiresInSeconds: number;
+      objectLockEnabled: boolean;
+      retentionUntilDate?: string;
+      isMock: boolean;
+    }>('/documents/presign-upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public static async getEvidenceDownloadUrl(documentId: string) {
+    return this.request<{
+      downloadUrl: string;
+      fileName: string;
+      sha256Checksum: string;
+      isLocked: boolean;
+      isMock: boolean;
+    }>(`/documents/${documentId}/download-url`);
+  }
 }

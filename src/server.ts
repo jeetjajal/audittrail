@@ -13,6 +13,9 @@ import { approvalRoutes } from './routes/approvals';
 import { signatureRoutes } from './routes/signatures';
 import { aiRoutes } from './routes/ai';
 import { auditRoutes } from './routes/audit';
+import { analyticsRoutes } from './routes/analytics';
+import { organizationRoutes } from './routes/organization';
+import { userRoutes } from './routes/users';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -62,6 +65,9 @@ export function buildServer(): FastifyInstance {
     apiV1.register(signatureRoutes, { prefix: '/signatures' });
     apiV1.register(aiRoutes, { prefix: '/ai' });
     apiV1.register(auditRoutes, { prefix: '/audit' });
+    apiV1.register(analyticsRoutes, { prefix: '/analytics' });
+    apiV1.register(organizationRoutes, { prefix: '/organization' });
+    apiV1.register(userRoutes, { prefix: '/users' });
   }, { prefix: '/api/v1' });
 
   // Centralized Secure Error Handler (Sanitizes stack traces & DB errors for compliance)

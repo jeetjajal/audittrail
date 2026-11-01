@@ -277,4 +277,41 @@ export async function approvalRoutes(fastify: FastifyInstance): Promise<void> {
 
     reply.send(result);
   });
+
+  // GET /api/v1/approvals/:id - Get workflow details and step progression
+  fastify.get('/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const orgId = req.tenantOrganizationId!;
+    const workflowId = req.params.id;
+
+    const result = await withTenantTransaction(orgId, async (client) => {
+      const wfRes = await client.query(
+        `SELECT id, entity_type, entity_id, workflow_type, current_step, status, created_at
+         FROM approval_workflows
+         WHERE organization_id = $1 AND id = $2;`,
+        [orgId, workflowId]
+      );
+      if (wfRes.rows.length === 0) throw new Error('WORKFLOW_NOT_FOUND');
+      const workflow = wfRes.rows[0];
+
+      const stepsRes = await client.query(
+        `SELECT s.id, s.step_order, s.step_name, s.status, s.required_role_id,
+                r.name as required_role_name,
+                sig.id as signature_id, sig.signer_name_snapshot, sig.meaning_of_signature,
+                sig.signed_at, sig.signature_manifest_hash
+         FROM approval_steps s
+         JOIN roles r ON s.organization_id = r.organization_id AND s.required_role_id = r.id
+         LEFT JOIN electronic_signatures sig ON s.organization_id = sig.organization_id AND s.id = sig.approval_step_id
+         WHERE s.organization_id = $1 AND s.workflow_id = $2
+         ORDER BY s.step_order ASC;`,
+        [orgId, workflowId]
+      );
+
+      return {
+        ...workflow,
+        steps: stepsRes.rows,
+      };
+    });
+
+    reply.send(result);
+  });
 }

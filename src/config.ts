@@ -11,6 +11,13 @@ export interface AppConfig {
   vertexAiProjectId?: string;
   vertexAiLocation: string;
   s3WormBucket: string;
+  awsRegion: string;
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
+  s3Endpoint?: string;
+  s3ObjectLockEnabled: boolean;
+  s3ObjectLockMode: 'GOVERNANCE' | 'COMPLIANCE';
+  s3RetentionYears: number;
   environment: 'development' | 'staging' | 'production' | 'test';
 }
 
@@ -25,5 +32,12 @@ export const config: AppConfig = {
   vertexAiProjectId: process.env.VERTEX_AI_PROJECT_ID,
   vertexAiLocation: process.env.VERTEX_AI_LOCATION || 'us-central1',
   s3WormBucket: process.env.S3_WORM_BUCKET || 'audittrail-compliance-records-worm',
+  awsRegion: process.env.AWS_REGION || 'us-east-1',
+  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  s3Endpoint: process.env.S3_ENDPOINT,
+  s3ObjectLockEnabled: process.env.S3_OBJECT_LOCK_ENABLED === 'true',
+  s3ObjectLockMode: (process.env.S3_OBJECT_LOCK_MODE || 'GOVERNANCE') as 'GOVERNANCE' | 'COMPLIANCE',
+  s3RetentionYears: parseInt(process.env.S3_RETENTION_YEARS || '10', 10),
   environment: (process.env.NODE_ENV as AppConfig['environment']) || 'development',
 };
