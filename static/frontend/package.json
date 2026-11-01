@@ -1,0 +1,18 @@
+{
+  "name": "audittrail-ai-custom-ui",
+  "version": "2.1.0",
+  "private": true,
+  "description": "AuditTrail AI - Medical Device eQMS React Custom UI for Atlassian Forge",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.67",
+    "@types/react-dom": "^18.2.22",
+    "typescript": "^5.4.3"
+  }
+}

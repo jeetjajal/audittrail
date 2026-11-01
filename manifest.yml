@@ -1,0 +1,58 @@
+modules:
+  jira:globalPage:
+    - key: audittrail-ai-global-page
+      title: AuditTrail AI - eQMS
+      resource: main
+      resolver:
+        function: resolver-fn
+
+  jira:projectPage:
+    - key: audittrail-ai-project-page
+      title: Quality & Audit Management
+      resource: main
+      resolver:
+        function: resolver-fn
+
+  jira:issuePanel:
+    - key: audittrail-ai-issue-panel
+      title: AuditTrail AI Investigation
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      resource: main
+      resolver:
+        function: resolver-fn
+
+  function:
+    - key: resolver-fn
+      handler: index.run
+
+remotes:
+  - key: audittrail-remote-backend
+    baseUrl: https://api.audittrail.ai
+    operations:
+      - compute
+
+endpoint:
+  - key: remote-api
+    remote: audittrail-remote-backend
+    route:
+      path: /api/v1/*
+
+resources:
+  - key: main
+    path: static/frontend/build
+
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - storage:app
+  external:
+    fetch:
+      backend:
+        - https://api.audittrail.ai
+        - http://localhost:3000
+        - http://127.0.0.1:3000
+
+app:
+  id: ari:cloud:ecosystem::app/c8b9d31e-4512-4cf0-8ef5-9a842f1b0a11

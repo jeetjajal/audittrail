@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment and Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+
+# Production & TypeScript Build Artifacts
+dist/
+build/
+static/frontend/build/
+*.tsbuildinfo
+
+# Logs & Debugging
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test Coverage & Temp
+coverage/
+.nyc_output/
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local database dumps
+*.dump
+*.sql.gz
