@@ -1,4 +1,6 @@
 import Fastify, { FastifyInstance } from 'fastify';
+import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { config } from './config';
@@ -69,6 +71,36 @@ export function buildServer(): FastifyInstance {
     apiV1.register(organizationRoutes, { prefix: '/organization' });
     apiV1.register(userRoutes, { prefix: '/users' });
   }, { prefix: '/api/v1' });
+
+  // Local static file serving for React Custom UI exploration
+  const frontendBuildDir = path.resolve(__dirname, '..', 'static', 'frontend', 'build');
+
+  app.get('/', async (req, reply) => {
+    const indexPath = path.join(frontendBuildDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      reply.type('text/html').send(fs.readFileSync(indexPath, 'utf-8'));
+    } else {
+      reply.send({ service: 'audittrail-ai-remote-backend', version: '2.1.0', status: 'UP' });
+    }
+  });
+
+  app.get('/bundle.js', async (req, reply) => {
+    const bundlePath = path.join(frontendBuildDir, 'bundle.js');
+    if (fs.existsSync(bundlePath)) {
+      reply.type('application/javascript').send(fs.readFileSync(bundlePath, 'utf-8'));
+    } else {
+      reply.status(404).send({ error: 'bundle.js not found' });
+    }
+  });
+
+  app.get('/bundle.js.map', async (req, reply) => {
+    const mapPath = path.join(frontendBuildDir, 'bundle.js.map');
+    if (fs.existsSync(mapPath)) {
+      reply.type('application/json').send(fs.readFileSync(mapPath, 'utf-8'));
+    } else {
+      reply.status(404).send({ error: 'sourcemap not found' });
+    }
+  });
 
   // Centralized Secure Error Handler (Sanitizes stack traces & DB errors for compliance)
   app.setErrorHandler((error, req, reply) => {

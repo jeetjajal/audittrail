@@ -14,12 +14,14 @@ import {
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api/v1';
+const DEFAULT_TENANT_ID = process.env.REACT_APP_TENANT_ID || 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d';
 
 export class ApiClient {
   private static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
+      'x-tenant-id': DEFAULT_TENANT_ID,
       ...(options.headers || {}),
     };
 
