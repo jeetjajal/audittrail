@@ -42,6 +42,20 @@ export const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ onNavigate }) =>
   const [reauthPassword, setReauthPassword] = useState('');
   const [agreedToLegal, setAgreedToLegal] = useState(false);
 
+  useEffect(() => {
+    async function loadPending() {
+      try {
+        const res = await ApiClient.getPendingApprovals();
+        if (res && Array.isArray(res.items) && res.items.length > 0) {
+          setPendingSteps(res.items);
+        }
+      } catch (err) {
+        console.warn('Using baseline approval demonstration items', err);
+      }
+    }
+    loadPending();
+  }, []);
+
   async function handleExecuteSignature(e: React.FormEvent) {
     e.preventDefault();
     if (!agreedToLegal) {

@@ -45,26 +45,63 @@ export const RootCauseAnalysis: React.FC<RootCauseAnalysisProps> = ({ investigat
   const [newFishbone, setNewFishbone] = useState({ category: 'MACHINE', factor: '', isPrimary: false });
   const [newCause, setNewCause] = useState({ statement: '', category: 'PROCESS_EQUIPMENT', verificationMethod: '' });
 
-  function handleAddWhy(e: React.FormEvent) {
+  async function handleAddWhy(e: React.FormEvent) {
     e.preventDefault();
-    setFiveWhys([...fiveWhys, { step: fiveWhys.length + 1, q: newWhy.q, a: newWhy.a }]);
+    const newStep = { step: fiveWhys.length + 1, q: newWhy.q, a: newWhy.a };
+    if (investigationId) {
+      try {
+        await ApiClient.addFiveWhys(investigationId, {
+          stepNumber: newStep.step,
+          question: newStep.q,
+          answer: newStep.a,
+        });
+      } catch (err) {
+        console.warn('Backend addFiveWhys fallback to client state:', err);
+      }
+    }
+    setFiveWhys([...fiveWhys, newStep]);
     setIsWhyModalOpen(false);
     setNewWhy({ q: '', a: '' });
   }
 
-  function handleAddFishbone(e: React.FormEvent) {
+  async function handleAddFishbone(e: React.FormEvent) {
     e.preventDefault();
-    setFishboneNodes([...fishboneNodes, { ...newFishbone, category: newFishbone.category as any }]);
+    const node = { ...newFishbone, category: newFishbone.category as any };
+    if (investigationId) {
+      try {
+        await ApiClient.addFishbone(investigationId, {
+          category: node.category,
+          causeFactor: node.factor,
+          isPrimaryContributory: node.isPrimary,
+        });
+      } catch (err) {
+        console.warn('Backend addFishbone fallback to client state:', err);
+      }
+    }
+    setFishboneNodes([...fishboneNodes, node]);
     setIsFishboneModalOpen(false);
     setNewFishbone({ category: 'MACHINE', factor: '', isPrimary: false });
   }
 
-  function handleAddCause(e: React.FormEvent) {
+  async function handleAddCause(e: React.FormEvent) {
     e.preventDefault();
+    const causeId = `rc-${Date.now()}`;
+    if (investigationId) {
+      try {
+        await ApiClient.addRootCause(investigationId, {
+          statement: newCause.statement,
+          category: newCause.category,
+          verificationMethod: newCause.verificationMethod,
+          isPrimary: true,
+        });
+      } catch (err) {
+        console.warn('Backend addRootCause fallback to client state:', err);
+      }
+    }
     setRootCauses([
       ...rootCauses,
       {
-        id: `rc-${Date.now()}`,
+        id: causeId,
         statement: newCause.statement,
         category: newCause.category,
         verificationMethod: newCause.verificationMethod,

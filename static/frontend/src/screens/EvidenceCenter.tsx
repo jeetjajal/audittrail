@@ -50,28 +50,59 @@ export const EvidenceCenter: React.FC<EvidenceCenterProps> = ({ onNavigate }) =>
     s3Uri: '',
   });
 
-  function handleUploadSubmit(e: React.FormEvent) {
+  async function handleUploadSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const docId = `doc-${Date.now()}`;
     const code = `EVD-2026-${(documents.length + 1).toString().padStart(4, '0')}`;
-    setDocuments([
-      ...documents,
-      {
-        id: docId,
-        documentCode: code,
-        title: newDoc.title,
-        classification: newDoc.classification as any,
-        version: 1,
-        fileName: newDoc.fileName || 'evidence_file.pdf',
-        s3Uri: newDoc.s3Uri || `s3://audittrail-compliance-records-worm/evidence/2026/${code}-v1.pdf`,
-        sha256: newDoc.sha256 || 'a1b2c3d4e5f67a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b',
-        fileSize: '2.4 MB',
-        virusStatus: 'CLEAN',
-        retentionDate: '2036-11-01',
-        uploadedBy: 'Dr. Eleanor Mitchell',
-        linkedEntity: 'Incident INC-2026-0042',
-      },
-    ]);
+    const payload = {
+      title: newDoc.title,
+      classification: newDoc.classification as any,
+      fileName: newDoc.fileName || 'evidence_file.pdf',
+      storageS3Uri: newDoc.s3Uri || `s3://audittrail-compliance-records-worm/evidence/2026/${code}-v1.pdf`,
+      sha256Checksum: newDoc.sha256 || 'a1b2c3d4e5f67a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b',
+      mimeType: 'application/pdf',
+      fileSizeBytes: 2450000,
+    };
+    try {
+      const created = await ApiClient.createDocument(payload);
+      setDocuments([
+        ...documents,
+        {
+          id: created.id,
+          documentCode: created.document_code || code,
+          title: created.title,
+          classification: created.classification as any,
+          version: created.current_version_number || 1,
+          fileName: payload.fileName,
+          s3Uri: payload.storageS3Uri,
+          sha256: payload.sha256Checksum,
+          fileSize: '2.4 MB',
+          virusStatus: 'CLEAN',
+          retentionDate: '2036-11-01',
+          uploadedBy: 'Lead Quality Investigator',
+          linkedEntity: 'Evidence Repository',
+        },
+      ]);
+    } catch (err) {
+      console.warn('Backend document upload fallback to client state:', err);
+      setDocuments([
+        ...documents,
+        {
+          id: `doc-${Date.now()}`,
+          documentCode: code,
+          title: newDoc.title,
+          classification: newDoc.classification as any,
+          version: 1,
+          fileName: payload.fileName,
+          s3Uri: payload.storageS3Uri,
+          sha256: payload.sha256Checksum,
+          fileSize: '2.4 MB',
+          virusStatus: 'CLEAN',
+          retentionDate: '2036-11-01',
+          uploadedBy: 'Lead Quality Investigator',
+          linkedEntity: 'Evidence Repository',
+        },
+      ]);
+    }
     setIsUploadModalOpen(false);
     setNewDoc({ title: '', classification: 'EVIDENCE', fileName: '', sha256: '', s3Uri: '' });
   }

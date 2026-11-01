@@ -2,8 +2,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { dbPool } from '../middleware/tenant-context';
 
 export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
-  // GET /health - Basic liveness probe
-  fastify.get('/health', async (_req: FastifyRequest, reply: FastifyReply) => {
+  // GET /health and /api/v1/health - Basic liveness probe
+  const healthHandler = async (_req: FastifyRequest, reply: FastifyReply) => {
     return reply.status(200).send({
       status: 'UP',
       uptime: process.uptime(),
@@ -11,7 +11,9 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
       service: 'audittrail-ai-remote-backend',
       version: '2.1.0',
     });
-  });
+  };
+  fastify.get('/health', healthHandler);
+  fastify.get('/api/v1/health', healthHandler);
 
   // GET /health/ready - Readiness probe (checks pool responsiveness)
   fastify.get('/health/ready', async (_req: FastifyRequest, reply: FastifyReply) => {
