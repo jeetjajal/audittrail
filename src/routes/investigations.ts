@@ -29,10 +29,7 @@ export async function investigationRoutes(fastify: FastifyInstance): Promise<voi
     const orgId = req.tenantOrganizationId!;
     const invId = req.params.id;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const data = await withTenantTransaction(orgId, async (client) => {
       // 1. Fetch investigation base
       const invRes = await client.query(
         `SELECT inv.*, u.full_name as lead_investigator_name, u.email as lead_investigator_email,
@@ -45,7 +42,7 @@ export async function investigationRoutes(fastify: FastifyInstance): Promise<voi
       );
 
       if (invRes.rows.length === 0) {
-        return reply.status(404).send({ error: 'INVESTIGATION_NOT_FOUND', message: 'Investigation not found' });
+        return null;
       }
       const investigation = invRes.rows[0];
 
@@ -77,15 +74,19 @@ export async function investigationRoutes(fastify: FastifyInstance): Promise<voi
         [orgId, invId]
       );
 
-      reply.send({
+      return {
         ...investigation,
         fiveWhys: whysRes.rows,
         fishboneNodes: fishboneRes.rows,
         rootCauses: causesRes.rows,
-      });
-    } finally {
-      client.release();
+      };
+    });
+
+    if (!data) {
+      return reply.status(404).send({ error: 'INVESTIGATION_NOT_FOUND', message: 'Investigation not found' });
     }
+
+    reply.send(data);
   });
 
   // POST /api/v1/investigations/:id/root-causes - Add root cause

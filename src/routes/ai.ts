@@ -140,10 +140,7 @@ export async function aiRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const { incidentId, embedding, limit = 5, minSimilarity = 0.70 } = req.body;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const res = await withTenantTransaction(orgId, async (client) => {
       // If incidentId provided and embedding not provided, fetch or generate deterministic vector
       let targetEmbedding = embedding;
       if (!targetEmbedding && incidentId) {
@@ -181,14 +178,14 @@ export async function aiRoutes(fastify: FastifyInstance): Promise<void> {
         minSimilarity
       );
 
-      reply.send({
+      return {
         incidentId: incidentId || null,
         totalMatchesFound: matches.length,
         matches,
-      });
-    } finally {
-      client.release();
-    }
+      };
+    });
+
+    reply.send(res);
   });
 
   // Alias POST /api/v1/ai/similarity
@@ -208,86 +205,65 @@ export async function aiRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const { incidentId, investigationId, modelName = 'gemini-1.5-pro-002' } = req.body;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
+    const suggestions = [
+      {
+        statement: 'Electrolyte seal porosity resulting from incomplete ultrasonic weld energy delivery',
+        category: 'PROCESS_EQUIPMENT',
+        confidenceScore: 0.88,
+        verificationMethod: 'Helium mass spectrometer leak testing and cross-sectional micrography',
+        rationale: 'Historical correlation with lot reflow thermal logs indicates energy fluctuation.',
+      },
+      {
+        statement: 'Component surface oxidation during inter-facility transit without desiccated packaging',
+        category: 'MATERIAL_SUPPLIER',
+        confidenceScore: 0.74,
+        verificationMethod: 'Energy Dispersive X-Ray Spectroscopy (EDS) elemental surface analysis',
+        rationale: 'Supplier lot inspection records report inconsistent humidity chamber readings.',
+      },
+    ];
 
-      const incRes = await client.query(
-        'SELECT title, description, severity FROM incidents WHERE organization_id = $1 AND id = $2;',
-        [orgId, incidentId]
-      );
-      const inc = incRes.rows[0] || { title: 'Unknown Device Event', description: 'None', severity: 'MAJOR' };
-
-      const suggestions = [
-        {
-          statement: 'Electrolyte seal porosity resulting from incomplete ultrasonic weld energy delivery',
-          category: 'PROCESS_EQUIPMENT',
-          confidenceScore: 0.88,
-          verificationMethod: 'Helium mass spectrometer leak testing and cross-sectional micrography',
-          rationale: 'Historical correlation with lot reflow thermal logs indicates energy fluctuation.',
-        },
-        {
-          statement: 'Component surface oxidation during inter-facility transit without desiccated packaging',
-          category: 'MATERIAL_SUPPLIER',
-          confidenceScore: 0.74,
-          verificationMethod: 'Energy Dispersive X-Ray Spectroscopy (EDS) elemental surface analysis',
-          rationale: 'Supplier lot inspection records report inconsistent humidity chamber readings.',
-        },
-      ];
-
-      reply.send({
-        incidentId,
-        investigationId: investigationId || null,
-        aiGenerated: true,
-        modelName,
-        humanReviewRequired: true,
-        suggestions,
-      });
-    } finally {
-      client.release();
-    }
+    reply.send({
+      incidentId,
+      investigationId: investigationId || null,
+      aiGenerated: true,
+      modelName,
+      humanReviewRequired: true,
+      suggestions,
+    });
   });
 
   // POST /api/v1/ai/capa-recommendations - Propose CAPA action items
   fastify.post('/capa-recommendations', async (req: FastifyRequest<{ Body: CapaRecommendationsBody }>, reply: FastifyReply) => {
-    const orgId = req.tenantOrganizationId!;
     const { incidentId, rootCauseId, modelName = 'gemini-1.5-pro-002' } = req.body;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
+    const recommendations = [
+      {
+        actionNumber: 1,
+        actionType: 'PROCESS_CHANGE',
+        title: 'Upgrade Ultrasonic Welder Acoustic Feedback Monitoring',
+        description: 'Implement real-time energy displacement threshold sensors on assembly line #4 to abort bonding on wattage drop.',
+        expectedEffectivenessMetric: 'Zero weld density deviations in subsequent 5,000 unit production run.',
+        suggestedDurationDays: 30,
+      },
+      {
+        actionNumber: 2,
+        actionType: 'RETRAINING',
+        title: 'Cleanroom Operator SOP-WEL-042 Retraining',
+        description: 'Conduct mandatory re-qualification and practical assessment on weld tip alignment and preventative maintenance.',
+        expectedEffectivenessMetric: '100% operator passing score (>90%) on practical qualification exam.',
+        suggestedDurationDays: 14,
+      },
+    ];
 
-      const recommendations = [
-        {
-          actionNumber: 1,
-          actionType: 'PROCESS_CHANGE',
-          title: 'Upgrade Ultrasonic Welder Acoustic Feedback Monitoring',
-          description: 'Implement real-time energy displacement threshold sensors on assembly line #4 to abort bonding on wattage drop.',
-          expectedEffectivenessMetric: 'Zero weld density deviations in subsequent 5,000 unit production run.',
-          suggestedDurationDays: 30,
-        },
-        {
-          actionNumber: 2,
-          actionType: 'RETRAINING',
-          title: 'Cleanroom Operator SOP-WEL-042 Retraining',
-          description: 'Conduct mandatory re-qualification and practical assessment on weld tip alignment and preventative maintenance.',
-          expectedEffectivenessMetric: '100% operator passing score (>90%) on practical qualification exam.',
-          suggestedDurationDays: 14,
-        },
-      ];
-
-      reply.send({
-        incidentId: incidentId || null,
-        rootCauseId: rootCauseId || null,
-        aiGenerated: true,
-        modelName,
-        humanReviewRequired: true,
-        disclaimer: 'Action proposals must be reviewed and formally authorized by CAPA Owner before entry into quality record.',
-        recommendations,
-      });
-    } finally {
-      client.release();
-    }
+    reply.send({
+      incidentId: incidentId || null,
+      rootCauseId: rootCauseId || null,
+      aiGenerated: true,
+      modelName,
+      humanReviewRequired: true,
+      disclaimer: 'Action proposals must be reviewed and formally authorized by CAPA Owner before entry into quality record.',
+      recommendations,
+    });
   });
 
   // POST /api/v1/ai/investigation-summary - Generate structured executive summary
@@ -295,10 +271,7 @@ export async function aiRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const { investigationId, modelName = 'gemini-1.5-pro-002' } = req.body;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const summaryData = await withTenantTransaction(orgId, async (client) => {
       const invRes = await client.query(
         `SELECT inv.*, i.incident_number, i.title as incident_title, i.severity
          FROM investigations inv
@@ -310,7 +283,7 @@ export async function aiRoutes(fastify: FastifyInstance): Promise<void> {
       if (invRes.rows.length === 0) throw new Error('INVESTIGATION_NOT_FOUND');
       const inv = invRes.rows[0];
 
-      const executiveSummary = {
+      return {
         executiveNarrative: `Investigation into incident ${inv.incident_number} (${inv.incident_title}) identified physical and process contributors under the ${inv.methodology} framework. Initial containment actions successfully quarantined suspect inventory. Recommended corrective actions focus on automated inline process controls.`,
         keyFindings: [
           'Immediate physical containment verified for all units in manufacturing lot.',
@@ -319,16 +292,14 @@ export async function aiRoutes(fastify: FastifyInstance): Promise<void> {
         ],
         regulatoryConsideration: 'MDR reporting criteria evaluated; non-conformance classified as containment-controlled under FDA 21 CFR § 820.65.',
       };
+    });
 
-      reply.send({
-        investigationId,
-        aiGenerated: true,
-        modelName,
-        summary: executiveSummary,
-      });
-    } finally {
-      client.release();
-    }
+    reply.send({
+      investigationId,
+      aiGenerated: true,
+      modelName,
+      summary: summaryData,
+    });
   });
 
   // POST /api/v1/ai/feedback - Human reviewer disposition on AI hypothesis

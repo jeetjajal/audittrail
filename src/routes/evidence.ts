@@ -122,10 +122,7 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const docId = req.params.id;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const docData = await withTenantTransaction(orgId, async (client) => {
       // 1. Fetch document header
       const docRes = await client.query(
         `SELECT d.*, dv.file_name as active_file_name, dv.sha256_checksum as active_sha256,
@@ -137,7 +134,7 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (docRes.rows.length === 0) {
-        return reply.status(404).send({ error: 'DOCUMENT_NOT_FOUND', message: 'Document not found' });
+        return null;
       }
       const doc = docRes.rows[0];
 
@@ -159,14 +156,18 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
         [orgId, docId]
       );
 
-      reply.send({
+      return {
         ...doc,
         versions: verRes.rows,
         attachments: attRes.rows,
-      });
-    } finally {
-      client.release();
+      };
+    });
+
+    if (!docData) {
+      return reply.status(404).send({ error: 'DOCUMENT_NOT_FOUND', message: 'Document not found' });
     }
+
+    reply.send(docData);
   });
 
   // POST /api/v1/documents/:id/versions - Upload/register new version

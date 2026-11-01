@@ -13,6 +13,10 @@ export const dbPool = new Pool({
 const tenantCache = new Map<string, { orgId: string; expiresAt: number }>();
 
 export async function resolveTenantOrganization(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (req.tenantOrganizationId) {
+    return;
+  }
+
   const forgeCtx = req.forgeContext;
   if (!forgeCtx) {
     reply.status(401).send({ error: 'UNAUTHENTICATED' });

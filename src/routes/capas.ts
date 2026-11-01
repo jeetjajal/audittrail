@@ -111,10 +111,7 @@ export async function capaRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const { status, riskLevel, limit = '50', offset = '0' } = req.query;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const res = await withTenantTransaction(orgId, async (client) => {
       let query = `
         SELECT c.id, c.capa_number, c.title, c.capa_type, c.status, c.risk_level,
                c.due_date, c.created_at, c.closed_at,
@@ -139,11 +136,11 @@ export async function capaRoutes(fastify: FastifyInstance): Promise<void> {
       query += ` ORDER BY c.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2};`;
       params.push(parseInt(limit, 10), parseInt(offset, 10));
 
-      const res = await client.query(query, params);
-      reply.send({ items: res.rows, total: res.rowCount });
-    } finally {
-      client.release();
-    }
+      const queryRes = await client.query(query, params);
+      return { items: queryRes.rows, total: queryRes.rowCount };
+    });
+
+    reply.send(res);
   });
 
   // GET /api/v1/capas/:id - Get full CAPA details
@@ -151,10 +148,7 @@ export async function capaRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const capaId = req.params.id;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const capaData = await withTenantTransaction(orgId, async (client) => {
       // 1. Fetch CAPA base
       const capaRes = await client.query(
         `SELECT c.*, u.full_name as owner_name, u.email as owner_email,
@@ -167,7 +161,7 @@ export async function capaRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (capaRes.rows.length === 0) {
-        return reply.status(404).send({ error: 'CAPA_NOT_FOUND', message: 'CAPA record not found' });
+        return null;
       }
       const capa = capaRes.rows[0];
 
@@ -204,15 +198,19 @@ export async function capaRoutes(fastify: FastifyInstance): Promise<void> {
         [orgId, capaId]
       );
 
-      reply.send({
+      return {
         ...capa,
         actions: actRes.rows,
         dependencies: depRes.rows,
         effectivenessReviews: effRes.rows,
-      });
-    } finally {
-      client.release();
+      };
+    });
+
+    if (!capaData) {
+      return reply.status(404).send({ error: 'CAPA_NOT_FOUND', message: 'CAPA record not found' });
     }
+
+    reply.send(capaData);
   });
 
   // POST /api/v1/capas/:id/actions - Add Action with DAG Dependency Validation

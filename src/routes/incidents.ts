@@ -154,10 +154,7 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const { status, severity, limit = '50', offset = '0' } = req.query;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const res = await withTenantTransaction(orgId, async (client) => {
       let query = `
         SELECT i.id, i.incident_number, i.title, i.severity, i.status, i.source,
                i.occurrence_date, i.is_mdr_reportable, i.rpn_score, i.jira_issue_key,
@@ -182,11 +179,11 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
       query += ` ORDER BY i.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2};`;
       params.push(parseInt(limit, 10), parseInt(offset, 10));
 
-      const res = await client.query(query, params);
-      reply.send({ items: res.rows, total: res.rowCount });
-    } finally {
-      client.release();
-    }
+      const result = await client.query(query, params);
+      return { items: result.rows, total: result.rowCount };
+    });
+
+    reply.send(res);
   });
 
   // GET /api/v1/incidents/:id - Get full incident details
@@ -194,10 +191,7 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const incidentId = req.params.id;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const incidentData = await withTenantTransaction(orgId, async (client) => {
       // 1. Fetch incident base
       const incRes = await client.query(
         `SELECT i.*, u.full_name as reported_by_name, u.email as reported_by_email,
@@ -210,15 +204,16 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (incRes.rows.length === 0) {
-        return reply.status(404).send({ error: 'INCIDENT_NOT_FOUND', message: 'Incident not found' });
+        return null;
       }
       const incident = incRes.rows[0];
 
       // 2. Fetch linked devices
       const devRes = await client.query(
-        `SELECT id.id, id.quantity_affected, md.id as device_id, md.device_model, md.udi_di, md.classification,
-                dl.id as lot_id, dl.lot_number, dl.expiration_date,
-                du.id as unit_id, du.serial_number, du.current_quarantine_status
+        `SELECT id.id, id.quantity_affected, md.id as device_id, md.model_number as device_model,
+                md.device_name, md.udi_di, md.fda_risk_class as classification,
+                dl.id as lot_id, dl.lot_batch_number as lot_number, dl.expiry_date as expiration_date,
+                du.id as unit_id, du.serial_number, du.current_status as current_quarantine_status
          FROM incident_devices id
          JOIN medical_devices md ON id.organization_id = md.organization_id AND id.device_id = md.id
          LEFT JOIN device_lots dl ON id.organization_id = dl.organization_id AND id.lot_id = dl.id
@@ -240,7 +235,7 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
 
       // 4. Fetch quarantine records
       const quarRes = await client.query(
-        `SELECT q.*, dl.lot_number, u.full_name as quarantined_by_name
+        `SELECT q.*, dl.lot_batch_number as lot_number, u.full_name as quarantined_by_name
          FROM quarantine_records q
          JOIN device_lots dl ON q.organization_id = dl.organization_id AND q.lot_id = dl.id
          JOIN users u ON q.organization_id = u.organization_id AND q.quarantined_by_id = u.id
@@ -257,16 +252,20 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
         [orgId, incidentId]
       );
 
-      reply.send({
+      return {
         ...incident,
         devices: devRes.rows,
         statusHistory: histRes.rows,
         quarantineRecords: quarRes.rows,
         investigations: invRes.rows,
-      });
-    } finally {
-      client.release();
+      };
+    });
+
+    if (!incidentData) {
+      return reply.status(404).send({ error: 'INCIDENT_NOT_FOUND', message: 'Incident not found' });
     }
+
+    reply.send(incidentData);
   });
 
   // PATCH /api/v1/incidents/:id - Update incident details
@@ -547,11 +546,8 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const incidentId = req.params.id;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
-      const res = await client.query(
+    const res = await withTenantTransaction(orgId, async (client) => {
+      const queryRes = await client.query(
         `SELECT d.id as document_id, d.document_code, d.title, d.classification,
                 dv.id as version_id, dv.version_number, dv.file_name, dv.storage_s3_uri,
                 dv.sha256_checksum, dv.mime_type, dv.file_size_bytes, dv.virus_scan_status,
@@ -564,10 +560,9 @@ export async function incidentRoutes(fastify: FastifyInstance): Promise<void> {
          ORDER BY dv.created_at DESC;`,
         [orgId, incidentId]
       );
+      return { items: queryRes.rows };
+    });
 
-      reply.send({ items: res.rows });
-    } finally {
-      client.release();
-    }
+    reply.send(res);
   });
 }

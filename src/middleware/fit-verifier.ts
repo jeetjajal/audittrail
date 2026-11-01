@@ -29,6 +29,18 @@ declare module 'fastify' {
  * Resolves Defect AUD-05
  */
 export async function verifyForgeInvocationToken(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  // Development and testing bypass using x-tenant-id header
+  if (config.environment !== 'production' && req.headers['x-tenant-id']) {
+    req.tenantOrganizationId = req.headers['x-tenant-id'] as string;
+    req.forgeContext = {
+      installationId: 'test-installation',
+      appId: config.forgeAppId,
+      isAppInvocation: true,
+      accountId: req.headers['x-user-id'] as string | undefined,
+    };
+    return;
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     reply.status(401).send({

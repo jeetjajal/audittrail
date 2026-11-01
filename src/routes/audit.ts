@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { withTenantTransaction } from '../middleware/tenant-context';
 import { AuditService } from '../services/audit-service';
 
 export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
@@ -8,14 +9,10 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
     const fromSeq = parseInt(req.query.fromSeq || '1', 10);
     const toSeq = parseInt(req.query.toSeq || '1000', 10);
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-      const result = await AuditService.verifyTenantChain(client, orgId, fromSeq, toSeq);
-      reply.send(result);
-    } finally {
-      client.release();
-    }
+    const result = await withTenantTransaction(orgId, async (client) => {
+      return AuditService.verifyTenantChain(client, orgId, fromSeq, toSeq);
+    });
+    reply.send(result);
   });
 
   // GET /api/v1/audit/events - Query audit log with pagination
@@ -25,10 +22,7 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
     const offset = parseInt(req.query.offset || '0', 10);
     const entityName = req.query.entityName;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const res = await withTenantTransaction(orgId, async (client) => {
       let query = `
         SELECT a.id, a.sequence_number, a.entity_name, a.entity_id, a.action,
                a.actor_id, a.correlation_id, a.reason_for_change, a.before_state, a.after_state,
@@ -48,11 +42,11 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
       query += ` ORDER BY a.sequence_number DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2};`;
       params.push(limit, offset);
 
-      const res = await client.query(query, params);
-      reply.send({ events: res.rows, total: res.rowCount });
-    } finally {
-      client.release();
-    }
+      const queryRes = await client.query(query, params);
+      return { events: queryRes.rows, total: queryRes.rowCount };
+    });
+
+    reply.send(res);
   });
 
   // GET /api/v1/audit/events/:id - Get single audit event by ID
@@ -60,10 +54,7 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
     const orgId = req.tenantOrganizationId!;
     const eventId = req.params.id;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
+    const event = await withTenantTransaction(orgId, async (client) => {
       const res = await client.query(
         `SELECT a.*, u.full_name as actor_name, u.email as actor_email
          FROM audit_events a
@@ -73,12 +64,15 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (res.rows.length === 0) {
-        return reply.status(404).send({ error: 'AUDIT_EVENT_NOT_FOUND', message: 'Audit event record not found' });
+        return null;
       }
+      return res.rows[0];
+    });
 
-      reply.send(res.rows[0]);
-    } finally {
-      client.release();
+    if (!event) {
+      return reply.status(404).send({ error: 'AUDIT_EVENT_NOT_FOUND', message: 'Audit event record not found' });
     }
+
+    reply.send(event);
   });
 }

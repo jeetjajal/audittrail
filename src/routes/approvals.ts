@@ -90,11 +90,8 @@ export async function approvalRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/pending', async (req: FastifyRequest, reply: FastifyReply) => {
     const orgId = req.tenantOrganizationId!;
 
-    const client = await fastify.pgPool.connect();
-    try {
-      await client.query('SET LOCAL app.current_organization_id = $1;', [orgId]);
-
-      const res = await client.query(
+    const res = await withTenantTransaction(orgId, async (client) => {
+      const queryRes = await client.query(
         `SELECT s.id as step_id, s.step_order, s.step_name, s.status as step_status,
                 w.id as workflow_id, w.entity_type, w.entity_id, w.workflow_type,
                 w.created_at as workflow_created_at,
@@ -106,11 +103,10 @@ export async function approvalRoutes(fastify: FastifyInstance): Promise<void> {
          ORDER BY s.step_order ASC, w.created_at ASC;`,
         [orgId]
       );
+      return { items: queryRes.rows, total: queryRes.rowCount };
+    });
 
-      reply.send({ items: res.rows, total: res.rowCount });
-    } finally {
-      client.release();
-    }
+    reply.send(res);
   });
 
   // POST /api/v1/approvals/:id/approve - Execute 21 CFR Part 11 e-signature approval
