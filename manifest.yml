@@ -27,7 +27,7 @@ modules:
 
 remotes:
   - key: audittrail-remote-backend
-    baseUrl: https://api.audittrail.ai
+    baseUrl: https://audittrail-backend.onrender.com
     operations:
       - compute
 
@@ -50,7 +50,7 @@ permissions:
   external:
     fetch:
       backend:
-        - https://api.audittrail.ai
+        - https://audittrail-backend.onrender.com
         - http://localhost:3000
         - http://127.0.0.1:3000
 
